@@ -1,0 +1,20 @@
+# Environments
+.venv/
+env/
+
+# Python Bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Generated Keys & TLS Certs (Do not commit!)
+keys/
+
+# Transport State
+session_tickets.pkl
+
+# IDE / AI tools
+.idea/
+.claude/
+.codex/
