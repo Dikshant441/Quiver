@@ -1,0 +1,29 @@
+# Virtual environments
+.venv/
+env/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Generated keys & TLS certs
+keys/
+
+# Transport state
+session_tickets.pkl
+
+# Git
+.git/
+
+# IDE / AI tools
+.idea/
+.claude/
+.codex/
+.gemini/
+
+# Docker (avoid recursive copy)
+Dockerfile
+docker-compose.yml
+.dockerignore

@@ -1,0 +1,12 @@
+services:
+  broker:
+    build: .
+    container_name: quiver-broker
+    ports:
+      - "4433:4433/udp"
+    volumes:
+      - broker-keys:/app/keys
+    restart: unless-stopped
+
+volumes:
+  broker-keys:
