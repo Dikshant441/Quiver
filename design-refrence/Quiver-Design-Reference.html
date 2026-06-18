@@ -1,0 +1,982 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Quiver — broker dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body, #root { margin: 0; height: 100%; }
+  body { background: #020617; font-family: 'Inter', system-ui, sans-serif; color: #f1f5f9; }
+  ::selection { background: rgba(99,102,241,0.35); color: #fff; }
+  /* scrollbars */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #334155; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  @keyframes qpulse { 0%,100% { transform: scale(1); opacity: 0.4 } 50% { transform: scale(1.6); opacity: 0 } }
+  button:focus, select:focus, textarea:focus { outline: 2px solid rgba(99,102,241,0.5); outline-offset: 1px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script>
+// Quiver demo data + topic colors
+
+const QUIVER_TOPIC_COLORS = [
+  "#6366f1", // indigo
+  "#ec4899", // pink
+  "#f59e0b", // amber
+  "#10b981", // emerald
+  "#06b6d4", // cyan
+  "#8b5cf6", // violet
+  "#f97316", // orange
+  "#84cc16", // lime
+];
+
+const QUIVER_DEMO_PEERS = [
+  { id: "a1b2c3d4e5f608972b1d4f5e6a7c8d9e0f1a2b3c4d5e6f70819253647586a7b8c", subs: ["news", "alerts"],   role: "ingest-01" },
+  { id: "e5f6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f70819a2b3c4d5e6f7081902", subs: ["news"],             role: "fanout-eu" },
+  { id: "0f1a2b3c4d5e6f70819253647586a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6", subs: ["alerts", "metrics"], role: "ops-bot" },
+  { id: "9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f70819253647586a7b8c0f1a2b3c4d5e6", subs: ["metrics"],          role: "grafana-01" },
+  { id: "586a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f70819253640f1a2b3c4d5e6f", subs: ["news", "trades"],   role: "fanout-ap" },
+  { id: "47586a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f7081925360f1a2b3c4d5e6", subs: ["trades"],           role: "trade-relay" },
+  { id: "364758a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f70819250f6a2b3c4d5e6f", subs: ["alerts"],           role: "pager-svc" },
+];
+
+const QUIVER_DEMO_MESSAGES = [
+  { topic: "news",    payload: "PR #4221 merged · transport: 0-RTT resumption shipped" },
+  { topic: "trades",  payload: "TICK AAPL 184.27 +0.41%" },
+  { topic: "alerts",  payload: "broker.cpu 78% · breach threshold 75%" },
+  { topic: "metrics", payload: "p99 deliver_ms=2.4 fanout=1284" },
+  { topic: "news",    payload: "deploy.broker-eu.v0.4.2 · 27 peers reconciled" },
+  { topic: "trades",  payload: "TICK NVDA 902.18 -1.12%" },
+  { topic: "alerts",  payload: "peer 47586a7b8c…  3 reconnects in 60s" },
+  { topic: "metrics", payload: "msg_total=1.84M backlog=0 dropped=0" },
+  { topic: "news",    payload: "release notes v0.4.3 drafted" },
+  { topic: "trades",  payload: "TICK MSFT 421.66 +0.08%" },
+  { topic: "alerts",  payload: "rotated ed25519 keys for ingest-01" },
+];
+
+const QUIVER_BROKER_ID = "f7a3b2c5d8e1409a6b3c2d1e8f9a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f08";
+
+Object.assign(window, {
+  QUIVER_TOPIC_COLORS, QUIVER_DEMO_PEERS, QUIVER_DEMO_MESSAGES, QUIVER_BROKER_ID,
+});
+
+</script>
+<script type="text/babel" data-presets="env,react">
+
+// Chrome.jsx — Simplified Chrome browser window (dark theme, macOS)
+// No dependencies, no image assets. All inline styles + inline SVG.
+
+const CHROME_C = {
+  barBg: '#202124',
+  tabBg: '#35363a',
+  text: '#e8eaed',
+  dim: '#9aa0a6',
+  urlBg: '#282a2d',
+};
+
+function ChromeTrafficLights() {
+  return (
+    <div style={{ display: 'flex', gap: 8, padding: '0 14px' }}>
+      <div style={{ width: 12, height: 12, borderRadius: '50%', background: '#ff5f57' }} />
+      <div style={{ width: 12, height: 12, borderRadius: '50%', background: '#febc2e' }} />
+      <div style={{ width: 12, height: 12, borderRadius: '50%', background: '#28c840' }} />
+    </div>
+  );
+}
+
+// Single tab (active has curved scoops)
+function ChromeTab({ title = 'New Tab', active = false }) {
+  const curve = (flip) => (
+    <svg width="8" height="10" viewBox="0 0 8 10"
+      style={{ position: 'absolute', bottom: 0, [flip ? 'right' : 'left']: -8, transform: flip ? 'scaleX(-1)' : 'none' }}>
+      <path d="M0 10C2 9 6 8 8 0V10H0Z" fill={CHROME_C.tabBg}/>
+    </svg>
+  );
+  return (
+    <div style={{
+      position: 'relative', height: 34, alignSelf: 'flex-end',
+      padding: '0 12px', display: 'flex', alignItems: 'center', gap: 8,
+      background: active ? CHROME_C.tabBg : 'transparent',
+      borderRadius: '8px 8px 0 0', minWidth: 120, maxWidth: 220,
+      fontFamily: 'system-ui, sans-serif', fontSize: 12,
+      color: active ? CHROME_C.text : CHROME_C.dim,
+    }}>
+      {active && curve(false)}
+      {active && curve(true)}
+      <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#5f6368', flexShrink: 0 }} />
+      <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
+    </div>
+  );
+}
+
+function ChromeTabBar({ tabs = [{ title: 'New Tab' }], activeIndex = 0 }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', height: 44,
+      background: CHROME_C.barBg, paddingRight: 8,
+    }}>
+      <ChromeTrafficLights />
+      <div style={{ display: 'flex', alignItems: 'flex-end', height: '100%', paddingLeft: 4, flex: 1 }}>
+        {tabs.map((t, i) => <ChromeTab key={i} title={t.title} active={i === activeIndex} />)}
+      </div>
+    </div>
+  );
+}
+
+function ChromeToolbar({ url = 'example.com' }) {
+  const iconDot = (
+    <div style={{
+      width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <div style={{ width: 16, height: 16, borderRadius: '50%', background: CHROME_C.dim, opacity: 0.4 }} />
+    </div>
+  );
+  return (
+    <div style={{
+      height: 40, background: CHROME_C.tabBg,
+      display: 'flex', alignItems: 'center', gap: 4, padding: '0 8px',
+    }}>
+      {iconDot}
+      {/* url bar */}
+      <div style={{
+        flex: 1, height: 30, borderRadius: 15, background: CHROME_C.urlBg,
+        display: 'flex', alignItems: 'center', gap: 8, padding: '0 14px',
+        margin: '0 6px',
+      }}>
+        <div style={{ width: 12, height: 12, borderRadius: '50%', background: CHROME_C.dim, opacity: 0.4 }} />
+        <span style={{
+          flex: 1, color: CHROME_C.text, fontSize: 13,
+          fontFamily: 'system-ui, sans-serif',
+        }}>{url}</span>
+      </div>
+      {iconDot}
+    </div>
+  );
+}
+
+function ChromeWindow({
+  tabs = [{ title: 'New Tab' }], activeIndex = 0, url = 'example.com',
+  width = 900, height = 600, children,
+}) {
+  return (
+    <div style={{
+      width, height, borderRadius: 10, overflow: 'hidden',
+      boxShadow: '0 24px 80px rgba(0,0,0,0.35), 0 0 0 1px rgba(0,0,0,0.1)',
+      display: 'flex', flexDirection: 'column', background: CHROME_C.tabBg,
+    }}>
+      <ChromeTabBar tabs={tabs} activeIndex={activeIndex} />
+      <ChromeToolbar url={url} />
+      <div style={{ flex: 1, background: '#fff', overflow: 'auto' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, {
+  ChromeWindow, ChromeTabBar, ChromeToolbar, ChromeTab, ChromeTrafficLights,
+});
+
+</script>
+<script type="text/babel" data-presets="env,react">
+// Quiver — header bar
+
+const HD = {
+  bg: "#0b1424",
+  border: "rgba(148,163,184,0.10)",
+  textPrim: "#f1f5f9",
+  textSec: "#94a3b8",
+  textMuted: "#64748b",
+  accent: "#6366f1",
+  ok: "#22c55e",
+};
+
+// Tiny sparkline of msg/sec
+function Sparkline({ data, color = "#6366f1", width = 80, height = 22 }) {
+  if (!data || data.length < 2) return <svg width={width} height={height} />;
+  const max = Math.max(...data, 1);
+  const step = width / (data.length - 1);
+  const pts = data.map((v, i) => `${i * step},${height - (v / max) * (height - 4) - 2}`).join(" ");
+  const area = `M0,${height} L${pts.split(" ").join(" L")} L${width},${height} Z`;
+  return (
+    <svg width={width} height={height} style={{ display: "block" }}>
+      <defs>
+        <linearGradient id="qg-spark" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"  stopColor={color} stopOpacity="0.45" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={area} fill="url(#qg-spark)" />
+      <polyline fill="none" stroke={color} strokeWidth="1.5" points={pts} />
+      <circle cx={width} cy={height - (data[data.length - 1] / max) * (height - 4) - 2} r="2" fill={color} />
+    </svg>
+  );
+}
+
+function QuiverLogo({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#a5b4fc" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 4 L20 20" />
+      <path d="M4 4 L8 5 L4 8 Z" fill="#a5b4fc" />
+      <path d="M4 4 L12 12" stroke="#6366f1" />
+      <path d="M9 4 L20 4 L20 15" opacity="0.5" />
+    </svg>
+  );
+}
+
+function StatusDot({ ok, label, count }) {
+  const color = ok ? HD.ok : "#ef4444";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 6, background: "rgba(255,255,255,0.02)", border: `1px solid ${HD.border}` }}>
+      <span style={{ position: "relative", width: 7, height: 7 }}>
+        <span style={{ position: "absolute", inset: 0, borderRadius: 99, background: color, boxShadow: `0 0 8px ${color}` }} />
+        {ok && <span style={{ position: "absolute", inset: -3, borderRadius: 99, border: `1px solid ${color}`, opacity: 0.4, animation: "qpulse 2s infinite" }} />}
+      </span>
+      <span style={{ fontSize: 11, color: HD.textSec, fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.04em" }}>{label}</span>
+      <span style={{ fontSize: 12, color: HD.textPrim, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600 }}>{count}</span>
+    </div>
+  );
+}
+
+function Header({ stats, connected, msgRate }) {
+  return (
+    <div style={{
+      height: 56, display: "flex", alignItems: "center", padding: "0 18px", gap: 16,
+      background: HD.bg, borderBottom: `1px solid ${HD.border}`,
+      fontFamily: "Inter, sans-serif"
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 6, background: "linear-gradient(135deg,#6366f1,#4338ca)", boxShadow: "0 0 14px rgba(99,102,241,0.4)" }}>
+          <QuiverLogo size={16} />
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
+          <span style={{ fontWeight: 700, color: HD.textPrim, fontSize: 14, letterSpacing: "0.02em" }}>Quiver</span>
+          <span style={{ fontSize: 10, color: HD.textMuted, fontFamily: "'JetBrains Mono',monospace", marginTop: 2 }}>broker · v0.4.2</span>
+        </div>
+      </div>
+
+      <div style={{ width: 1, alignSelf: "stretch", background: HD.border, margin: "0 4px" }} />
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8, color: HD.textSec, fontSize: 12, fontFamily: "'JetBrains Mono',monospace" }}>
+        <span style={{ color: HD.textMuted }}>~</span>
+        <span style={{ color: HD.textPrim }}>network/topology</span>
+      </div>
+
+      <div style={{ flex: 1 }} />
+
+      <StatusDot ok={connected} label="WS" count={connected ? "ws://:8080" : "offline"} />
+      <StatusDot ok={true} label="PEERS" count={stats.peer_count} />
+      <StatusDot ok={true} label="TOPICS" count={stats.topic_count} />
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 10px", borderRadius: 6, background: "rgba(255,255,255,0.02)", border: `1px solid ${HD.border}` }}>
+        <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
+          <span style={{ fontSize: 9, color: HD.textMuted, fontFamily: "'JetBrains Mono',monospace", letterSpacing: "0.1em" }}>MSG/s</span>
+          <span style={{ fontSize: 12, color: HD.textPrim, fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }}>{stats.msg_per_sec.toFixed(1)}</span>
+        </div>
+        <Sparkline data={msgRate} />
+      </div>
+
+      <button style={{
+        height: 28, padding: "0 12px", background: "transparent", color: HD.textSec,
+        border: `1px solid ${HD.border}`, borderRadius: 6, fontSize: 12,
+        fontFamily: "Inter, sans-serif", cursor: "pointer", display: "flex", alignItems: "center", gap: 6
+      }}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>
+        Reset View
+      </button>
+    </div>
+  );
+}
+
+Object.assign(window, { QuiverHeader: Header, QuiverSparkline: Sparkline });
+
+</script>
+<script type="text/babel" data-presets="env,react">
+// Quiver — topology force graph with animated message pulses
+// Plain SVG + a tiny custom force layout (no d3 dependency at runtime).
+
+const QG = {
+  bgPrimary: "#0b1220",
+  bgGrid:    "rgba(99,102,241,0.06)",
+  brokerFill: "#6366f1",
+  brokerStroke: "rgba(165,180,252,0.7)",
+  peerFill: "#1e293b",
+  peerStroke: "#475569",
+  peerStrokeHover: "#a5b4fc",
+  peerStrokeDying: "#ef4444",
+  textPrim: "#f1f5f9",
+  textSec:  "#94a3b8",
+  textMuted: "#64748B",
+};
+
+function topicColor(topic, registry) {
+  if (registry.current.has(topic)) return registry.current.get(topic);
+  const c = QUIVER_TOPIC_COLORS[registry.current.size % QUIVER_TOPIC_COLORS.length];
+  registry.current.set(topic, c);
+  return c;
+}
+
+// Tiny radial force layout — broker at center, peers on rings, jittered angles.
+function layoutPeers(peers, w, h) {
+  const cx = w / 2, cy = h / 2;
+  const out = {};
+  const n = peers.length;
+  // Distribute peers on 1 ring, evenly with small phase variance for life.
+  peers.forEach((p, i) => {
+    const angle = (i / Math.max(n, 1)) * Math.PI * 2 - Math.PI / 2;
+    const r = Math.min(w, h) * 0.32 + ((i * 31) % 40) - 20;
+    out[p.id] = {
+      x: cx + Math.cos(angle) * r,
+      y: cy + Math.sin(angle) * r,
+      angle,
+    };
+  });
+  return { cx, cy, positions: out };
+}
+
+// Compute curved arc path between two points; bend offset per index avoids overlap
+function arcPath(sx, sy, tx, ty, bend = 1.2) {
+  const dx = tx - sx, dy = ty - sy;
+  const dr = Math.sqrt(dx * dx + dy * dy) * bend;
+  return `M${sx},${sy}A${dr},${dr} 0 0,1 ${tx},${ty}`;
+}
+
+// Main component
+function TopologyGraph({ peers, pulses, hoveredPeer, setHoveredPeer, selectedPeer, setSelectedPeer, hoveredEdge, setHoveredEdge, dimensions }) {
+  const colorRef = React.useRef(new Map());
+  const { width, height } = dimensions;
+  const layout = React.useMemo(() => layoutPeers(peers, width, height), [peers, width, height]);
+
+  // Build edges: peer -> broker per subscription
+  const edges = [];
+  peers.forEach((p) => {
+    p.subs.forEach((topic, idx) => {
+      edges.push({
+        id: `${p.id}::${topic}`,
+        peerId: p.id,
+        topic,
+        bend: 1.0 + (idx * 0.18) + (p.subs.length > 1 ? 0.12 : 0),
+        color: topicColor(topic, colorRef),
+      });
+    });
+  });
+
+  const isHidden = (peerId) => selectedPeer && peerId !== selectedPeer;
+  const isEdgeDim = (e) => (selectedPeer && e.peerId !== selectedPeer) || (hoveredPeer && e.peerId !== hoveredPeer);
+
+  return (
+    <svg width={width} height={height} style={{ display: "block", background: QG.bgPrimary }} onClick={() => setSelectedPeer(null)}>
+      <defs>
+        {/* dotted grid pattern */}
+        <pattern id="qg-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+          <circle cx="0.5" cy="0.5" r="0.7" fill="rgba(148,163,184,0.18)" />
+        </pattern>
+        {/* radial vignette */}
+        <radialGradient id="qg-vignette" cx="50%" cy="50%" r="60%">
+          <stop offset="0%"  stopColor="#1e1b4b" stopOpacity="0.28" />
+          <stop offset="60%" stopColor="#0b1220" stopOpacity="0" />
+          <stop offset="100%" stopColor="#000" stopOpacity="0.55" />
+        </radialGradient>
+        {/* broker glow */}
+        <radialGradient id="qg-broker-glow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%"  stopColor="#a5b4fc" stopOpacity="0.55" />
+          <stop offset="60%" stopColor="#6366f1" stopOpacity="0.18" />
+          <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
+        </radialGradient>
+        {/* arrowhead per topic color (built from edges) */}
+        {[...new Set(edges.map(e => e.color))].map((c) => (
+          <marker key={c} id={`qg-arrow-${c.replace("#","")}`} viewBox="0 -4 8 8" refX="6" refY="0" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,-4L8,0L0,4Z" fill={c} />
+          </marker>
+        ))}
+      </defs>
+
+      <rect width={width} height={height} fill="url(#qg-grid)" />
+      <rect width={width} height={height} fill="url(#qg-vignette)" />
+
+      {/* concentric rings */}
+      {[0.18, 0.32, 0.46].map((f, i) => (
+        <circle key={i} cx={layout.cx} cy={layout.cy} r={Math.min(width, height) * f}
+          fill="none" stroke="rgba(99,102,241,0.10)" strokeDasharray="2 4" />
+      ))}
+
+      {/* broker glow halo */}
+      <circle cx={layout.cx} cy={layout.cy} r={140} fill="url(#qg-broker-glow)">
+        <animate attributeName="r" values="120;160;120" dur="3s" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="0.7;1;0.7" dur="3s" repeatCount="indefinite" />
+      </circle>
+
+      {/* edges */}
+      <g>
+        {edges.map((e) => {
+          const pos = layout.positions[e.peerId];
+          if (!pos) return null;
+          const d = arcPath(pos.x, pos.y, layout.cx, layout.cy, e.bend);
+          const isFocus = hoveredEdge === e.id;
+          const dim = isEdgeDim(e);
+          return (
+            <g key={e.id} opacity={dim ? 0.18 : 1} style={{ transition: "opacity 200ms" }}>
+              <path
+                id={`qg-edge-${e.id}`}
+                d={d}
+                fill="none"
+                stroke={e.color}
+                strokeOpacity={isFocus ? 1 : 0.55}
+                strokeWidth={isFocus ? 3 : 1.6}
+                markerEnd={`url(#qg-arrow-${e.color.replace("#","")})`}
+                onMouseEnter={() => setHoveredEdge(e.id)}
+                onMouseLeave={() => setHoveredEdge(null)}
+                style={{ cursor: "help" }}
+              />
+              {/* hidden wider hit target */}
+              <path d={d} fill="none" stroke="transparent" strokeWidth={14}
+                onMouseEnter={() => setHoveredEdge(e.id)}
+                onMouseLeave={() => setHoveredEdge(null)} />
+            </g>
+          );
+        })}
+      </g>
+
+      {/* message pulses */}
+      <g>
+        {pulses.map((p) => {
+          const pos = layout.positions[p.peerId];
+          if (!pos) return null;
+          const d = arcPath(layout.cx, layout.cy, pos.x, pos.y, p.bend);
+          return (
+            <circle key={p.id} r="4.5" fill={p.color} filter={`drop-shadow(0 0 6px ${p.color})`}>
+              <animateMotion dur={`${p.duration}ms`} fill="freeze" path={d} begin="0s" />
+              <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.1;0.85;1" dur={`${p.duration}ms`} fill="freeze" />
+              <animate attributeName="r" values="2.5;5;2.5" dur={`${p.duration}ms`} fill="freeze" />
+            </circle>
+          );
+        })}
+      </g>
+
+      {/* peer nodes */}
+      <g>
+        {peers.map((p) => {
+          const pos = layout.positions[p.id];
+          if (!pos) return null;
+          const isSel = selectedPeer === p.id;
+          const isHov = hoveredPeer === p.id;
+          const dim = selectedPeer && !isSel;
+          const stroke = p.dying ? QG.peerStrokeDying : (isSel || isHov) ? QG.peerStrokeHover : QG.peerStroke;
+          return (
+            <g key={p.id} transform={`translate(${pos.x},${pos.y})`}
+              opacity={dim ? 0.25 : (p.dying ? 0.45 : 1)}
+              style={{ cursor: "pointer", transition: "opacity 200ms" }}
+              onMouseEnter={() => setHoveredPeer(p.id)}
+              onMouseLeave={() => setHoveredPeer(null)}
+              onClick={(ev) => { ev.stopPropagation(); setSelectedPeer(isSel ? null : p.id); }}
+            >
+              {(isSel || isHov) && (
+                <circle r="32" fill="none" stroke={QG.peerStrokeHover} strokeOpacity="0.35" strokeWidth="1">
+                  <animate attributeName="r" values="28;36;28" dur="2s" repeatCount="indefinite" />
+                </circle>
+              )}
+              <circle r="20" fill={QG.peerFill} stroke={stroke} strokeWidth={isSel ? 2 : 1.5} />
+              <text textAnchor="middle" y="4" fontFamily="'JetBrains Mono', monospace" fontSize="9" fill={QG.textPrim} fontWeight="600">
+                {p.id.slice(0, 6)}
+              </text>
+              <text textAnchor="middle" y="36" fontFamily="Inter, sans-serif" fontSize="10" fill={QG.textSec}>
+                {p.role}
+              </text>
+            </g>
+          );
+        })}
+      </g>
+
+      {/* broker node — drawn last so it sits on top */}
+      <g transform={`translate(${layout.cx},${layout.cy})`}>
+        <circle r="34" fill={QG.brokerFill} stroke={QG.brokerStroke} strokeWidth="1.5">
+          <animate attributeName="r" values="33;36;33" dur="2s" repeatCount="indefinite" />
+        </circle>
+        <circle r="28" fill="none" stroke="rgba(255,255,255,0.18)" />
+        {/* rune */}
+        <g stroke="#fff" strokeWidth="1.6" fill="none" strokeLinecap="round">
+          <path d="M -10 -2 L 0 -10 L 10 -2 L 0 8 Z" />
+          <path d="M 0 -10 L 0 8" opacity="0.6" />
+        </g>
+        <text textAnchor="middle" y="52" fontFamily="Inter, sans-serif" fontSize="11" fontWeight="700" fill={QG.textPrim} letterSpacing="0.12em">
+          BROKER
+        </text>
+        <text textAnchor="middle" y="66" fontFamily="'JetBrains Mono', monospace" fontSize="9" fill={QG.textSec}>
+          {QUIVER_BROKER_ID.slice(0, 12)}…
+        </text>
+      </g>
+
+      {/* hovered peer tooltip */}
+      {hoveredPeer && (() => {
+        const p = peers.find((x) => x.id === hoveredPeer);
+        const pos = layout.positions[hoveredPeer];
+        if (!p || !pos) return null;
+        return (
+          <g transform={`translate(${pos.x + 28},${pos.y - 36})`} pointerEvents="none">
+            <rect x="0" y="0" rx="6" ry="6" width="220" height="62" fill="#0f172a" stroke="#334155" />
+            <text x="10" y="18" fontFamily="'JetBrains Mono', monospace" fontSize="10" fill={QG.textPrim}>{p.id.slice(0, 24)}…</text>
+            <text x="10" y="34" fontFamily="Inter, sans-serif" fontSize="10" fill={QG.textSec}>role · {p.role}</text>
+            <text x="10" y="50" fontFamily="Inter, sans-serif" fontSize="10" fill={QG.textSec}>subs · {p.subs.join(", ")}</text>
+          </g>
+        );
+      })()}
+
+      {/* hovered edge tooltip */}
+      {hoveredEdge && (() => {
+        const e = edges.find(x => x.id === hoveredEdge);
+        if (!e) return null;
+        const pos = layout.positions[e.peerId];
+        if (!pos) return null;
+        const mx = (pos.x + layout.cx) / 2;
+        const my = (pos.y + layout.cy) / 2;
+        return (
+          <g transform={`translate(${mx + 8},${my - 22})`} pointerEvents="none">
+            <rect rx="4" ry="4" width="120" height="32" fill="#0f172a" stroke={e.color} />
+            <circle cx="10" cy="16" r="4" fill={e.color} />
+            <text x="20" y="14" fontFamily="Inter,sans-serif" fontSize="10" fill={QG.textPrim} fontWeight="600">{e.topic}</text>
+            <text x="20" y="26" fontFamily="Inter,sans-serif" fontSize="9" fill={QG.textSec}>subscription</text>
+          </g>
+        );
+      })()}
+    </svg>
+  );
+}
+
+Object.assign(window, { TopologyGraph, QUIVER_topicColor: topicColor });
+
+</script>
+<script type="text/babel" data-presets="env,react">
+// Quiver — right rail: legend, live feed, publish form / peer detail
+
+const RR = {
+  bg: "#0f172a",
+  surface: "#111c33",
+  border: "rgba(148,163,184,0.12)",
+  borderStrong: "rgba(148,163,184,0.22)",
+  textPrim: "#f1f5f9",
+  textSec: "#94a3b8",
+  textMuted: "#64748b",
+  accent: "#6366f1",
+  ok: "#22c55e",
+};
+
+function SectionTitle({ children, right }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px 8px" }}>
+      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: RR.textSec, letterSpacing: "0.18em", fontWeight: 600 }}>{children}</div>
+      <div>{right}</div>
+    </div>
+  );
+}
+
+function TopicLegend({ topics, colorRef }) {
+  if (topics.length === 0) {
+    return (
+      <div>
+        <SectionTitle>TOPICS</SectionTitle>
+        <div style={{ padding: "0 16px 16px", fontSize: 12, color: RR.textMuted }}>No active topics</div>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <SectionTitle right={<span style={{ fontSize: 10, color: RR.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>{topics.length}</span>}>TOPICS</SectionTitle>
+      <div style={{ padding: "0 8px 12px", display: "flex", flexDirection: "column", gap: 2 }}>
+        {topics.map((t) => {
+          const color = colorRef.current.get(t.topic) || "#6366f1";
+          return (
+            <div key={t.topic} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 8px", borderRadius: 6 }}>
+              <span style={{ width: 8, height: 8, borderRadius: 99, background: color, boxShadow: `0 0 8px ${color}` }} />
+              <span style={{ flex: 1, fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: RR.textPrim }}>{t.topic}</span>
+              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: RR.textSec }}>{t.subscriber_count}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TopicBadge({ topic, color }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "2px 7px", borderRadius: 4, background: `${color}22`, color, fontFamily: "'JetBrains Mono', monospace", fontSize: 10, fontWeight: 600, border: `1px solid ${color}55` }}>
+      <span style={{ width: 4, height: 4, borderRadius: 99, background: color }} />
+      {topic}
+    </span>
+  );
+}
+
+function fmtTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString("en-US", { hour12: false });
+}
+
+function LiveFeed({ feed, colorRef }) {
+  const [paused, setPaused] = React.useState(false);
+  const visible = paused ? feed : feed.slice(0, 30);
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, borderTop: `1px solid ${RR.border}` }}>
+      <SectionTitle right={
+        <button onClick={() => setPaused(!paused)} style={{
+          fontFamily: "'JetBrains Mono',monospace", fontSize: 10,
+          color: paused ? "#fbbf24" : RR.ok, background: "transparent",
+          border: `1px solid ${paused ? "#fbbf2433" : "#22c55e33"}`,
+          padding: "2px 8px", borderRadius: 4, cursor: "pointer", letterSpacing: "0.08em"
+        }}>{paused ? "● PAUSED" : "● LIVE"}</button>
+      }>LIVE FEED</SectionTitle>
+      <div onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)} style={{ flex: 1, overflowY: "auto", padding: "0 8px 12px", scrollbarWidth: "thin", scrollbarColor: "#334155 transparent" }}>
+        {visible.length === 0 && (
+          <div style={{ padding: 12, fontSize: 12, color: RR.textMuted, fontStyle: "italic" }}>No messages yet…</div>
+        )}
+        {visible.map((m) => {
+          const color = colorRef.current.get(m.topic) || "#6366f1";
+          return (
+            <div key={m.id} style={{ padding: "8px 8px", borderBottom: `1px solid ${RR.border}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                <TopicBadge topic={m.topic} color={color} />
+                <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: RR.textMuted }}>{fmtTime(m.ts)}</span>
+              </div>
+              <div style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11.5, color: RR.textPrim, lineHeight: 1.45, wordBreak: "break-word" }}>
+                {m.payload.length > 90 ? m.payload.slice(0, 88) + "…" : m.payload}
+              </div>
+              <div style={{ marginTop: 4, fontSize: 10, color: RR.textMuted, fontFamily: "'JetBrains Mono',monospace" }}>
+                → {m.subscribers.length} {m.subscribers.length === 1 ? "peer" : "peers"}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PublishForm({ topics, onPublish, connected }) {
+  const [topic, setTopic] = React.useState(topics[0]?.topic || "news");
+  const [message, setMessage] = React.useState("");
+  React.useEffect(() => {
+    if (!topics.find(t => t.topic === topic) && topics[0]) setTopic(topics[0].topic);
+  }, [topics]);
+  const submit = () => {
+    if (!message.trim()) return;
+    onPublish(topic, message.trim());
+    setMessage("");
+  };
+  return (
+    <div style={{ borderTop: `1px solid ${RR.border}` }}>
+      <SectionTitle>PUBLISH</SectionTitle>
+      <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontSize: 10, color: RR.textMuted, fontFamily: "'JetBrains Mono',monospace", letterSpacing: "0.1em" }}>TOPIC</span>
+          <select value={topic} onChange={(e) => setTopic(e.target.value)} style={{
+            background: "#0b1424", color: RR.textPrim, border: `1px solid ${RR.borderStrong}`,
+            borderRadius: 6, padding: "8px 10px", fontSize: 12, fontFamily: "'JetBrains Mono', monospace", outline: "none"
+          }}>
+            {topics.map(t => <option key={t.topic} value={t.topic}>{t.topic}</option>)}
+          </select>
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontSize: 10, color: RR.textMuted, fontFamily: "'JetBrains Mono',monospace", letterSpacing: "0.1em" }}>MESSAGE</span>
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit(); }}
+            placeholder="payload bytes…"
+            rows={3}
+            style={{
+              background: "#0b1424", color: RR.textPrim, border: `1px solid ${RR.borderStrong}`,
+              borderRadius: 6, padding: "8px 10px", fontSize: 12,
+              fontFamily: "'JetBrains Mono', monospace", outline: "none", resize: "none"
+            }}
+          />
+        </label>
+        <button
+          onClick={submit}
+          disabled={!connected || !message.trim()}
+          style={{
+            background: connected && message.trim() ? "#6366f1" : "#1e293b",
+            color: connected && message.trim() ? "#fff" : RR.textMuted,
+            border: "none", borderRadius: 6, padding: "9px 14px",
+            fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 600,
+            letterSpacing: "0.02em", cursor: connected && message.trim() ? "pointer" : "not-allowed",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6
+          }}>
+          Publish
+          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, opacity: 0.7 }}>⌘⏎</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PeerDetail({ peer, feed, colorRef, onClose }) {
+  const recv = feed.filter((m) => m.subscribers.includes(peer.id));
+  return (
+    <div style={{ borderTop: `1px solid ${RR.border}`, display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px 8px" }}>
+        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: RR.textSec, letterSpacing: "0.18em", fontWeight: 600 }}>PEER · {peer.role}</div>
+        <button onClick={onClose} style={{ background: "transparent", border: "none", color: RR.textSec, cursor: "pointer", fontSize: 14, padding: 4 }}>✕</button>
+      </div>
+      <div style={{ padding: "0 16px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+        <Field label="ID">
+          <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: RR.textPrim, wordBreak: "break-all", lineHeight: 1.5 }}>{peer.id}</span>
+        </Field>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+          <Stat label="SINCE" value="00:04:21" />
+          <Stat label="MSGS" value={recv.length} />
+          <Stat label="RTT" value="2.4ms" />
+        </div>
+        <Field label="SUBSCRIPTIONS">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {peer.subs.map((t) => <TopicBadge key={t} topic={t} color={colorRef.current.get(t) || "#6366f1"} />)}
+          </div>
+        </Field>
+        <Field label="RECENT">
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 140, overflowY: "auto" }}>
+            {recv.slice(0, 6).map((m) => (
+              <div key={m.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span style={{ width: 6, height: 6, borderRadius: 99, background: colorRef.current.get(m.topic) }} />
+                <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: RR.textMuted }}>{fmtTime(m.ts)}</span>
+                <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: RR.textPrim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.payload}</span>
+              </div>
+            ))}
+            {recv.length === 0 && <span style={{ fontSize: 11, color: RR.textMuted, fontStyle: "italic" }}>No messages received</span>}
+          </div>
+        </Field>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <span style={{ fontSize: 10, color: RR.textMuted, fontFamily: "'JetBrains Mono',monospace", letterSpacing: "0.1em" }}>{label}</span>
+      {children}
+    </div>
+  );
+}
+
+function Stat({ label, value }) {
+  return (
+    <div style={{ background: "#0b1424", border: `1px solid ${RR.border}`, borderRadius: 6, padding: "8px 10px" }}>
+      <div style={{ fontSize: 9, color: RR.textMuted, fontFamily: "'JetBrains Mono',monospace", letterSpacing: "0.1em", marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 14, color: RR.textPrim, fontFamily: "'JetBrains Mono',monospace", fontWeight: 600 }}>{value}</div>
+    </div>
+  );
+}
+
+Object.assign(window, { TopicLegend, LiveFeed, PublishForm, PeerDetail });
+
+</script>
+<script type="text/babel" data-presets="env,react">
+// Quiver — main app: composes header + topology + right rail + demo mode
+
+const APP_C = {
+  bg: "#0b1220",
+  panel: "#0f172a",
+  textPrim: "#f1f5f9",
+  textSec: "#94a3b8",
+  textMuted: "#64748b",
+};
+
+function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
+
+function useDemoMode() {
+  // Build app state from QUIVER_DEMO_PEERS and run a fake message stream
+  const [peers, setPeers] = React.useState(() => QUIVER_DEMO_PEERS.map(p => ({ ...p, dying: false })));
+  const [feed, setFeed] = React.useState([]);
+  const [pulses, setPulses] = React.useState([]);
+  const [msgRate, setMsgRate] = React.useState(Array(20).fill(0));
+  const [stats, setStats] = React.useState({ peer_count: peers.length, topic_count: 0, msg_per_sec: 0, total_messages: 0 });
+  const colorRef = React.useRef(new Map());
+
+  const topicsList = React.useMemo(() => {
+    const m = new Map();
+    peers.forEach(p => p.subs.forEach(t => m.set(t, (m.get(t) || 0) + 1)));
+    // pre-warm color registry in stable order
+    [...m.keys()].forEach(t => {
+      if (!colorRef.current.has(t)) {
+        colorRef.current.set(t, QUIVER_TOPIC_COLORS[colorRef.current.size % QUIVER_TOPIC_COLORS.length]);
+      }
+    });
+    return [...m.entries()].map(([topic, c]) => ({ topic, subscriber_count: c }));
+  }, [peers]);
+
+  const totalRef = React.useRef(0);
+  const tickWindowRef = React.useRef([]);
+
+  // publish a message — used by demo + manual publish
+  const publish = React.useCallback((topic, payload) => {
+    const subscribers = peers.filter(p => p.subs.includes(topic) && !p.dying).map(p => p.id);
+    if (subscribers.length === 0) return;
+    const ts = new Date().toISOString();
+    const id = uid();
+    const item = { id, topic, payload, ts, subscribers };
+    setFeed((f) => [item, ...f].slice(0, 100));
+
+    // pulses
+    const color = colorRef.current.get(topic) || "#6366f1";
+    const newPulses = subscribers.map((peerId, idx) => {
+      const peer = peers.find(p => p.id === peerId);
+      const sIdx = peer ? peer.subs.indexOf(topic) : 0;
+      return {
+        id: `${id}-${peerId}`,
+        peerId, topic, color,
+        bend: 1.0 + (sIdx * 0.18) + (peer && peer.subs.length > 1 ? 0.12 : 0),
+        duration: 850,
+      };
+    });
+    setPulses((p) => [...p, ...newPulses]);
+    setTimeout(() => {
+      setPulses((p) => p.filter(x => !newPulses.find(np => np.id === x.id)));
+    }, 1000);
+    totalRef.current += 1;
+    tickWindowRef.current.push(performance.now());
+  }, [peers]);
+
+  // demo: schedule messages
+  React.useEffect(() => {
+    let i = 0;
+    const tick = () => {
+      const m = QUIVER_DEMO_MESSAGES[i % QUIVER_DEMO_MESSAGES.length];
+      i++;
+      publish(m.topic, m.payload);
+    };
+    const interval = setInterval(tick, 1100);
+    // initial burst
+    setTimeout(tick, 220);
+    setTimeout(tick, 720);
+    return () => clearInterval(interval);
+  }, [publish]);
+
+  // stats update every 1s + sparkline
+  React.useEffect(() => {
+    const itv = setInterval(() => {
+      const cutoff = performance.now() - 5000;
+      tickWindowRef.current = tickWindowRef.current.filter(t => t > cutoff);
+      const rate = tickWindowRef.current.length / 5;
+      setStats((s) => ({
+        peer_count: peers.filter(p => !p.dying).length,
+        topic_count: topicsList.length,
+        msg_per_sec: rate,
+        total_messages: totalRef.current,
+      }));
+      setMsgRate((arr) => [...arr.slice(1), rate]);
+    }, 1000);
+    return () => clearInterval(itv);
+  }, [peers, topicsList]);
+
+  return { peers, feed, pulses, stats, msgRate, topics: topicsList, colorRef, publish };
+}
+
+function App() {
+  const demo = useDemoMode();
+  const [hoveredPeer, setHoveredPeer] = React.useState(null);
+  const [selectedPeer, setSelectedPeer] = React.useState(null);
+  const [hoveredEdge, setHoveredEdge] = React.useState(null);
+  const [dim, setDim] = React.useState({ width: 880, height: 600 });
+  const graphRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!graphRef.current) return;
+    const ro = new ResizeObserver((entries) => {
+      const r = entries[0].contentRect;
+      setDim({ width: Math.max(400, r.width), height: Math.max(360, r.height) });
+    });
+    ro.observe(graphRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  const selectedPeerObj = demo.peers.find(p => p.id === selectedPeer);
+
+  return (
+    <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", background: APP_C.bg, color: APP_C.textPrim, fontFamily: "Inter, sans-serif" }}>
+      <QuiverHeader stats={demo.stats} connected={true} msgRate={demo.msgRate} />
+      <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+        {/* graph */}
+        <div ref={graphRef} style={{ flex: 1, position: "relative", background: APP_C.bg, minWidth: 0 }}>
+          <TopologyGraph
+            peers={demo.peers}
+            pulses={demo.pulses}
+            hoveredPeer={hoveredPeer} setHoveredPeer={setHoveredPeer}
+            selectedPeer={selectedPeer} setSelectedPeer={setSelectedPeer}
+            hoveredEdge={hoveredEdge} setHoveredEdge={setHoveredEdge}
+            dimensions={dim}
+          />
+          {/* floating overlay: demo notice */}
+          <div style={{ position: "absolute", left: 14, bottom: 14, display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 6, background: "rgba(11,20,36,0.7)", border: "1px solid rgba(99,102,241,0.25)", backdropFilter: "blur(6px)" }}>
+            <span style={{ width: 7, height: 7, borderRadius: 99, background: "#fbbf24", boxShadow: "0 0 8px #fbbf24" }} />
+            <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11, color: APP_C.textSec }}>
+              <span style={{ color: "#fbbf24" }}>demo mode</span> · streaming synthetic peers · run <span style={{ color: APP_C.textPrim }}>python ws_bridge.py</span> for live
+            </span>
+          </div>
+          {/* zoom controls */}
+          <div style={{ position: "absolute", right: 14, bottom: 14, display: "flex", flexDirection: "column", gap: 2, padding: 4, background: "rgba(11,20,36,0.7)", border: "1px solid rgba(148,163,184,0.18)", borderRadius: 6, backdropFilter: "blur(6px)" }}>
+            {["+","−","⤢"].map((s, i) => (
+              <button key={i} style={{
+                width: 28, height: 28, background: "transparent", color: APP_C.textSec,
+                border: "none", borderRadius: 4, cursor: "pointer", fontSize: 14,
+                fontFamily: "Inter, sans-serif"
+              }}>{s}</button>
+            ))}
+          </div>
+        </div>
+        {/* right rail */}
+        <aside style={{ width: 340, background: APP_C.panel, borderLeft: "1px solid rgba(148,163,184,0.12)", display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <TopicLegend topics={demo.topics} colorRef={demo.colorRef} />
+          <LiveFeed feed={demo.feed} colorRef={demo.colorRef} />
+          {selectedPeerObj
+            ? <PeerDetail peer={selectedPeerObj} feed={demo.feed} colorRef={demo.colorRef} onClose={() => setSelectedPeer(null)} />
+            : <PublishForm topics={demo.topics} onPublish={demo.publish} connected={true} />
+          }
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+// Mount inside a browser frame
+function Mounted() {
+  const [size, setSize] = React.useState({ w: 1280, h: 800 });
+  React.useEffect(() => {
+    const upd = () => {
+      const w = Math.min(window.innerWidth - 40, 1440);
+      const h = Math.min(window.innerHeight - 40, 900);
+      setSize({ w: Math.max(960, w), h: Math.max(640, h) });
+    };
+    upd();
+    window.addEventListener("resize", upd);
+    return () => window.removeEventListener("resize", upd);
+  }, []);
+  return (
+    <div style={{ minHeight: "100vh", background: "#020617", padding: 20, display: "flex", justifyContent: "center", alignItems: "center" }}>
+      <ChromeWindow
+        tabs={[{ title: "Quiver — broker dashboard" }, { title: "GitHub · Quiver" }]}
+        activeIndex={0}
+        url="quiver.local/network/topology"
+        width={size.w}
+        height={size.h}
+      >
+        <App />
+      </ChromeWindow>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Mounted />);
+
+</script>
+</body>
+</html>

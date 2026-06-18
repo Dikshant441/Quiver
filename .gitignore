@@ -18,3 +18,38 @@ session_tickets.pkl
 .idea/
 .claude/
 .codex/
+.codex
+.cursor/
+.cursorrules
+.mcp.json
+.opencode.json
+.windsurfrules
+.code-review-graph/
+
+# Prototype scaffolding (superseded by frontend/)
+designs/
+
+# AI assistant context files
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+PROMPT_FOR_CLAUDE_DESIGN.md
+
+# Frontend build artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Reference docs (not source)
+*.pdf
+quiver_project_guide.*

@@ -1,0 +1,108 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #475569;
+  --accent-green: #22c55e;
+  --accent-red: #ef4444;
+  --accent-blue: #6366f1;
+  --border: #334155;
+  --border-radius: 8px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background-color: #020617;
+  color: var(--text-primary);
+  font-family: "Inter", system-ui, sans-serif;
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+::selection {
+  background: rgba(99, 102, 241, 0.35);
+  color: #fff;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+button:focus,
+select:focus,
+textarea:focus,
+input:focus {
+  outline: 2px solid rgba(99, 102, 241, 0.5);
+  outline-offset: 1px;
+}
+
+.font-mono {
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+}
+
+@keyframes qpulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+@keyframes broker-pulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 6px #6366f1aa);
+  }
+  50% {
+    filter: drop-shadow(0 0 18px #6366f1ff);
+  }
+}
+.broker-glow {
+  animation: broker-pulse 2s ease-in-out infinite;
+}
+
+@keyframes peer-fadeout {
+  from {
+    opacity: 0.3;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.peer-dying {
+  animation: peer-fadeout 3s ease-out forwards;
+}
